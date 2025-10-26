@@ -17,6 +17,13 @@ except ImportError:
     GTTS_AVAILABLE = False
     logging.warning("gTTS not available. Install with: pip install gtts")
 
+# Try to import Silero TTS for better quality
+try:
+    SILERO_AVAILABLE = True
+except ImportError:
+    SILERO_AVAILABLE = False
+    logging.warning("Silero TTS not available. Install with: pip install silero-tts")
+
 logger = logging.getLogger(__name__)
 
 
@@ -162,6 +169,78 @@ class GoogleTTSEngine:
         tts.save(output_file)
         
         logger.info(f"Google TTS audio saved to: {output_file}")
+        return output_file
+
+
+class SileroTTSEngine:
+    """Silero TTS Engine - Best quality for Indian languages."""
+    
+    def __init__(self, language: str = "hindi"):
+        """
+        Initialize Silero TTS Engine.
+        
+        Args:
+            language: Target language
+        """
+        if not SILERO_AVAILABLE:
+            raise ImportError("Silero TTS is not installed. Install with: pip install silero-tts")
+        
+        import silero_tts
+        
+        self.language = language.lower()
+        
+        # Map to Silero language codes
+        self.SILERO_LANGUAGE_CODES = {
+            "hindi": "hi",
+            "telugu": "te",
+            "tamil": "ta",
+            "kannada": "kn",
+            "bengali": "bn",
+            "marathi": "mr",
+            "gujarati": "gu",
+            "urdu": "ur",
+            "punjabi": "pa",
+            "malayalam": "ml",
+            "odia": "or",
+            "english": "en",
+        }
+        
+        self.lang_code = self.SILERO_LANGUAGE_CODES.get(self.language, "hi")
+        self.device = torch.device("cpu")
+        
+        # Initialize Silero TTS
+        silero_tts.init_tts(self.device)
+        self.model, self.example_text = silero_tts.load_model(
+            self.device, 
+            language=self.lang_code
+        )
+    
+    def speak(self, text: str, output_file: Optional[str] = None) -> str:
+        """
+        Convert text to speech using Silero TTS.
+        
+        Args:
+            text: Input text
+            output_file: Output file path (optional)
+            
+        Returns:
+            Path to output audio file
+        """
+        if output_file is None:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+                output_file = tmp_file.name
+        
+        # Generate audio
+        audio = self.model.apply_tts(
+            text=text,
+            speaker=self.lang_code,
+            sample_rate=8000
+        )
+        
+        # Save to file
+        self.model.save_wav(audio, output_file)
+        
+        logger.info(f"Silero TTS audio saved to: {output_file}")
         return output_file
 
 

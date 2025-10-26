@@ -6,7 +6,7 @@ import streamlit as st
 import logging
 import os
 import tempfile
-from voice_clone_pdf_reader import PDFReader, VoiceCloneTTS
+from voice_clone_pdf_reader import PDFReader, VoiceCloneTTS, SileroTTSEngine, TTSEngine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,9 +52,24 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Voice cloning is mandatory
+    # TTS Engine selection
+    st.header("🎙️ TTS Engine")
+    tts_engine = st.radio(
+        "Choose TTS Engine",
+        ["Coqui XTTS (Voice Cloning)", "Silero TTS (Best Quality)", "Basic TTS"],
+        index=0,
+        help="Coqui XTTS supports voice cloning. Silero TTS offers best quality for Indian languages."
+    )
+    
+    st.markdown("---")
+    
+    # Voice cloning is mandatory for Coqui XTTS
     st.header("🎤 Voice Sample")
-    st.info("⚠️ **Required**: Upload a voice sample to clone for speech generation")
+    voice_required = tts_engine == "Coqui XTTS (Voice Cloning)"
+    if voice_required:
+        st.info("⚠️ **Required**: Upload a voice sample to clone for speech generation")
+    else:
+        st.info("ℹ️ Optional: Upload a voice sample (for Coqui XTTS only)")
     
     uploaded_voice = st.file_uploader(
         "Upload Voice Sample (WAV, MP3)",
@@ -89,13 +104,20 @@ with col1:
             tmp_file.write(uploaded_file.read())
             pdf_path = tmp_file.name
         
-        # Check if voice sample is uploaded
-        if voice_sample is None:
+        # Check if voice sample is required and uploaded
+        voice_required = tts_engine == "Coqui XTTS (Voice Cloning)"
+        if voice_required and voice_sample is None:
             st.warning("⚠️ Please upload a voice sample in the sidebar first!")
-            st.info("Upload a 5-15 second audio clip of the voice you want to use for speech generation.")
-        else:
+            st.info("Voice cloning requires a voice sample for speech generation.")
+        elif not voice_required or voice_sample:
             # Process PDF button
-            if st.button("🚀 Convert PDF to Speech with Your Voice", type="primary"):
+            button_text = "🚀 Convert PDF to Speech"
+            if tts_engine == "Coqui XTTS (Voice Cloning)":
+                button_text = "🚀 Convert PDF to Speech with Your Voice"
+            elif tts_engine == "Silero TTS (Best Quality)":
+                button_text = "⚡ Convert PDF to Speech (High Quality)"
+            
+            if st.button(button_text, type="primary"):
                 with st.spinner("Processing PDF..."):
                     try:
                         # Read PDF
@@ -112,8 +134,14 @@ with col1:
                             with st.expander("📄 Preview Extracted Text"):
                                 st.text(text[:500] + "..." if len(text) > 500 else text)
                             
-                            # Convert to speech using voice cloning
-                            with st.spinner("🎤 Generating speech with your voice... This may take a few minutes"):
+                            # Convert to speech using selected TTS engine
+                            spinner_text = "🎤 Generating speech..."
+                            if tts_engine == "Coqui XTTS (Voice Cloning)":
+                                spinner_text = "🎤 Generating speech with your voice... This may take a few minutes"
+                            elif tts_engine == "Silero TTS (Best Quality)":
+                                spinner_text = "⚡ Generating high-quality speech..."
+                            
+                            with st.spinner(spinner_text):
                                 output_dir = "outputs"
                                 os.makedirs(output_dir, exist_ok=True)
                                 output_file = os.path.join(
@@ -121,13 +149,24 @@ with col1:
                                     f"{uploaded_file.name.replace('.pdf', '')}_{language}.wav"
                                 )
                                 
-                                # Always use voice cloning
-                                tts = VoiceCloneTTS(
-                                    language=language,
-                                    voice_sample=voice_sample
-                                )
-                                
-                                audio_path = tts.speak(text, output_file=output_file)
+                                # Select TTS engine based on user choice
+                                if tts_engine == "Coqui XTTS (Voice Cloning)":
+                                    if not voice_sample:
+                                        st.error("❌ Voice sample required for voice cloning")
+                                    else:
+                                        tts = VoiceCloneTTS(
+                                            language=language,
+                                            voice_sample=voice_sample
+                                        )
+                                        audio_path = tts.speak(text, output_file=output_file)
+                                        
+                                elif tts_engine == "Silero TTS (Best Quality)":
+                                    tts = SileroTTSEngine(language=language)
+                                    audio_path = tts.speak(text, output_file=output_file)
+                                    
+                                else:  # Basic TTS
+                                    tts = TTSEngine(language=language)
+                                    audio_path = tts.speak(text, output_file=output_file)
                                 
                                 st.success("🎉 Audio generated successfully!")
                                 
